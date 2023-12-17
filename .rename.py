@@ -1,5 +1,5 @@
-import ctypes, os # , re
-from glob import glob
+import ctypes, os
+from glob import glob; from tqdm import tqdm
 
 def language_settings():
     kernel32 = ctypes.windll.kernel32
@@ -34,37 +34,41 @@ def count_files(folder_path):
 
 def rename_files(folder_path):
     global renamed_files
+    folder_list = sorted(glob(os.path.join(folder_path, '*')), key=lambda k: os.path.getmtime(k))
     folder_name = os.path.basename(folder_path)
-    files = sorted(glob(os.path.join(folder_path, '*')), key=lambda x: os.path.getmtime(x)) # sorted(glob(os.path.join(folder_path, '*')), key=lambda x: [int(c) if c.isdigit() else c for c in re.split(r'(\d+)', os.path.basename(x))])
+    file_count = len([f for f in folder_list if os.path.isfile(f)])
     retry_files = []
 
-    for i, file_path in enumerate(files, start=1):
-        if os.path.isfile(file_path):
-            file_name, file_ext = os.path.splitext(os.path.basename(file_path))
-            file_number = str(i)
-            old_file_name = f"{file_name}{file_ext}"
-            new_file_name = f"{folder_name}_{file_number}{file_ext}"
+    with tqdm(desc=f"+「{folder_name}」フォルダのファイル名変更中" if is_japanese else f"+ Renaming files in the '{folder_name}' folder", total=file_count, bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt}", leave=False) as progress_bar:
+        folder_count = sum(1 for f in folder_list if os.path.isdir(f))
 
-            while old_file_name != new_file_name:
-                try:
-                    os.rename(file_path, os.path.join(folder_path, new_file_name))
-                    renamed_files += 1
-                    print(f"+ No.{str(renamed_files).rjust(6)}: {old_file_name}  =>  {new_file_name}")
-                    break
-                except Exception:
-                    retry_files.append((file_path, new_file_name))
-                    break
+        for i, file_path in enumerate(folder_list, start=1):
+            if os.path.isfile(file_path):
+                file_name, file_ext = os.path.splitext(os.path.basename(file_path))
+                file_number = str(i - folder_count)
+                old_file_name, new_file_name = f"{file_name}{file_ext}", f"{folder_name}_{file_number}{file_ext}"
+
+                if old_file_name != new_file_name:
+                    try:
+                        os.rename(file_path, os.path.join(folder_path, new_file_name))
+                        renamed_files += 1
+                    except Exception:
+                        retry_files.append((file_path, new_file_name))
+                    finally:
+                        progress_bar.leave=True
+                        progress_bar.update(1)
+                else:
+                    progress_bar.update(1)
 
     for file_path, new_file_name in retry_files:
         try:
             os.rename(file_path, os.path.join(folder_path, new_file_name))
             renamed_files += 1
-            print(f"+ No.{str(renamed_files).rjust(6)}: {os.path.basename(file_path)} => {new_file_name}")
         except Exception as e:
             error_messages.append(f"E {os.path.basename(file_path)}: {str(e)}")
 
 def main():
-    global is_japanese, previous_path, renamed_files
+    global is_japanese, previous_path, renamed_files, error_messages
 
     welcome_message = (
         "\n\nI ようこそ！.RENAME.exe をダウンロードしてくださり、ありがとうございます(o_ _)o\n"
@@ -127,7 +131,7 @@ def main():
         )
         print(choice_message)
 
-        all_files = renamed_files = 0
+        all_files = renamed_files = 0; error_messages = []
 
 if __name__ == "__main__":
     is_japanese = language_settings()
